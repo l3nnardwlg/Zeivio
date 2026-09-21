@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  role          String         @default("USER")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  presentations Presentation[]
+}
+
+model Presentation {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  slideCount  Int      @default(1)
+  isPublished Boolean  @default(false)
+  accessCode  String   @unique
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  slides      Slide[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Slide {
+  id             String       @id @default(uuid())
+  presentationId String
+  presentation   Presentation @relation(fields: [presentationId], references: [id], onDelete: Cascade)
+  orderIndex     Int          @default(0)
+  type           String       @default("CONTENT") // CONTENT, POLL, QA
+  title          String
+  subtitle       String?
+  content        String?
+  options        String?      // JSON string array for poll options e.g. ["Option A", "Option B"]
+  votes          PollVote[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model PollVote {
+  id          String   @id @default(uuid())
+  slideId     String
+  slide       Slide    @relation(fields: [slideId], references: [id], onDelete: Cascade)
+  optionIndex Int
+  createdAt   DateTime @default(now())
+}
