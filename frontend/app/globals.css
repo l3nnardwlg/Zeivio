@@ -118,7 +118,7 @@ a {
 .buttonPrimary {
   color: white;
   background: var(--accent);
-  padding: 6px 2px;
+  padding: 11px 18;
 
   transition:
     transform 0.2s ease,
@@ -1045,9 +1045,13 @@ footer p {
 }
 
 .buttonSmall {
-  height: 36px;
+  height: 28px;
   padding: 0 14px;
   font-size: 13px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .authFooter {
