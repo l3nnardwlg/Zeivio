@@ -1875,6 +1875,26 @@ footer p {
   color: var(--accent-light);
 }
 
+.duplicateSlideButton {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  padding: 9px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.duplicateSlideButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.duplicateSlideButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .editorCanvasArea {
   background: var(--background);
   padding: 36px;

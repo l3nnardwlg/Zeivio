@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, use, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth-context';
@@ -36,6 +36,8 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
   const [isFetching, setIsFetching] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<boolean>(false);
+  const saveVersion = useRef(0);
 
   useEffect(() => {
     if (!isLoading && !token) {
@@ -47,6 +49,33 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
       loadData();
     }
   }, [token, isLoading, presentationId, router]);
+
+  useEffect(() => {
+    const handleEditorKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActiveSlideIndex((index) => Math.min(index + 1, slides.length - 1));
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActiveSlideIndex((index) => Math.max(index - 1, 0));
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        void handleDuplicateSlide();
+      }
+    };
+
+    window.addEventListener('keydown', handleEditorKeyDown);
+    return () => window.removeEventListener('keydown', handleEditorKeyDown);
+  }, [slides.length, activeSlideIndex]);
 
   const loadData = async () => {
     setIsFetching(true);
@@ -68,22 +97,40 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   const updateActiveSlide = async (updates: Partial<Slide>) => {
     if (!activeSlide) return;
 
-    // Optimistic UI update
+    const requestVersion = saveVersion.current + 1;
+    saveVersion.current = requestVersion;
+    const previousSlide = activeSlide;
+
     const updatedSlides = [...slides];
     const newSlideData = { ...activeSlide, ...updates };
     updatedSlides[activeSlideIndex] = newSlideData;
     setSlides(updatedSlides);
 
     setIsSaving(true);
+    setSaveError(false);
     try {
       await apiRequest(`/slides/${activeSlide.id}`, {
         method: 'PUT',
         body: JSON.stringify(updates),
       });
+      if (saveVersion.current === requestVersion) {
+        setIsSaving(false);
+      }
     } catch (err) {
       console.error('Failed to update slide:', err);
+      if (saveVersion.current === requestVersion) {
+        setSlides((currentSlides) => {
+          const revertedSlides = [...currentSlides];
+          revertedSlides[activeSlideIndex] = previousSlide;
+          return revertedSlides;
+        });
+        setIsSaving(false);
+        setSaveError(true);
+      }
     } finally {
-      setIsSaving(false);
+      if (saveVersion.current === requestVersion) {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -103,6 +150,29 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
       setActiveSlideIndex(newSlides.length - 1);
     } catch (err) {
       console.error('Failed to create slide:', err);
+    }
+  };
+
+  const handleDuplicateSlide = async () => {
+    if (!activeSlide) return;
+
+    try {
+      const res = await apiRequest(`/slides/presentation/${presentationId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: `${activeSlide.title || 'Folie'} (Kopie)`,
+          type: activeSlide.type,
+          subtitle: activeSlide.subtitle,
+          content: activeSlide.content,
+          options: activeSlide.options,
+        }),
+      });
+
+      const newSlides = [...slides, res.slide];
+      setSlides(newSlides);
+      setActiveSlideIndex(newSlides.length - 1);
+    } catch (err) {
+      console.error('Failed to duplicate slide:', err);
     }
   };
 
@@ -184,6 +254,8 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
           <span className="divider">/</span>
           <span className="presentationTitleText">{presentation.title}</span>
           {isSaving && <span className="savingBadge">Speichert...</span>}
+          {!isSaving && saveError && <span className="savingBadge saveErrorBadge">Nicht gespeichert</span>}
+          {!isSaving && !saveError && <span className="savingBadge savedBadge">Gespeichert</span>}
         </div>
 
         <div className="topbarCenter">
@@ -237,6 +309,14 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
           <button className="addSlideButton" onClick={handleAddSlide}>
             + Neue Folie
+          </button>
+          <button
+            className="duplicateSlideButton"
+            onClick={handleDuplicateSlide}
+            disabled={!activeSlide}
+            title="Aktive Folie als Vorlage duplizieren"
+          >
+            Folie duplizieren
           </button>
         </aside>
 
