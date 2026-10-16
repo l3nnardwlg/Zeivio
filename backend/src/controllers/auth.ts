@@ -142,6 +142,9 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
 
 export async function getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    if (!req.user) {res.status(401).json({error:'Unauthorized'});return;}
+    const requestingUser = await prisma.user.findUnique({where:{id:req.user.userId},select:{role:true}});
+    if(requestingUser?.role !== 'ADMIN'){res.status(403).json({error:'Forbidden'});return;}
     const users = await prisma.user.findMany({
       select: {
         id: true,

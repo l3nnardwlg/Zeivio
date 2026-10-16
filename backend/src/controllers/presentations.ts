@@ -1,12 +1,13 @@
 import { Response } from 'express';
+import { randomInt } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 function generateAccessCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(randomInt(chars.length));
   }
   return code;
 }
@@ -37,9 +38,9 @@ export async function createPresentation(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const { title, description, slideCount } = req.body;
+    const { title, description } = req.body ?? {};
 
-    if (!title) {
+    if (typeof title !== 'string' || !title.trim() || title.length > 160 || (description !== undefined && (typeof description !== 'string' || description.length > 2000))) {
       res.status(400).json({ error: 'Title is required' });
       return;
     }
@@ -62,7 +63,7 @@ export async function createPresentation(req: AuthenticatedRequest, res: Respons
       data: {
         title: title.trim(),
         description: description ? description.trim() : null,
-        slideCount: slideCount ? parseInt(slideCount, 10) : 1,
+        slideCount: 1,
         accessCode,
         ownerId: req.user.userId,
       },
@@ -90,6 +91,11 @@ export async function getPresentationById(req: AuthenticatedRequest, res: Respon
 
     if (!presentation) {
       res.status(404).json({ error: 'Presentation not found' });
+      return;
+    }
+
+    if (!req.user || presentation.ownerId !== req.user.userId) {
+      res.status(403).json({ error: 'Forbidden' });
       return;
     }
 
@@ -126,6 +132,42 @@ export async function deletePresentation(req: AuthenticatedRequest, res: Respons
     res.json({ message: 'Presentation deleted successfully' });
   } catch (error) {
     console.error('Delete presentation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updatePresentation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.presentation.findUnique({ where: { id } });
+    if (!existing) { res.status(404).json({ error: 'Presentation not found' }); return; }
+    if (!req.user || existing.ownerId !== req.user.userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+    const { title, description, isPublished, sessionActive, currentSlideIndex } = req.body ?? {};
+    if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.length > 160)) {
+      res.status(400).json({ error: 'Title must be 1–160 characters' }); return;
+    }
+    if (description !== undefined && description !== null && (typeof description !== 'string' || description.length > 2000)) {
+      res.status(400).json({ error: 'Description must be at most 2000 characters' }); return;
+    }
+    if (isPublished !== undefined && typeof isPublished !== 'boolean') {
+      res.status(400).json({ error: 'isPublished must be a boolean' }); return;
+    }
+    if (sessionActive !== undefined && typeof sessionActive !== 'boolean') {res.status(400).json({error:'sessionActive must be boolean'});return;}
+    if (currentSlideIndex !== undefined && (!Number.isInteger(currentSlideIndex) || currentSlideIndex < 0)) {res.status(400).json({error:'Invalid slide index'});return;}
+    if (currentSlideIndex !== undefined) {
+      const count = await prisma.slide.count({where:{presentationId:id}});
+      if (currentSlideIndex >= count) {res.status(400).json({error:'Slide index out of range'});return;}
+    }
+    const presentation = await prisma.presentation.update({ where: { id }, data: {
+      ...(title !== undefined ? { title: title.trim() } : {}),
+      ...(description !== undefined ? { description: description?.trim() || null } : {}),
+      ...(isPublished !== undefined ? { isPublished } : {}),
+      ...(sessionActive !== undefined ? {sessionActive,sessionStartedAt:sessionActive ? new Date() : null} : {}),
+      ...(currentSlideIndex !== undefined ? {currentSlideIndex} : {}),
+    }});
+    res.json({ presentation });
+  } catch (error) {
+    console.error('Update presentation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
