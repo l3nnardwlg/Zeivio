@@ -17,6 +17,7 @@ model User {
   updatedAt     DateTime       @updatedAt
 
   presentations Presentation[]
+  mediaAssets    MediaAsset[]
 }
 
 model Presentation {
@@ -72,4 +73,16 @@ model AudienceQuestion {
   isApproved Boolean @default(false)
   createdAt DateTime @default(now())
   @@index([slideId, isApproved])
+}
+
+model MediaAsset {
+  id String @id @default(uuid())
+  ownerId String
+  owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+  url String @unique
+  name String
+  mime String
+  bytes Int
+  createdAt DateTime @default(now())
+  @@index([ownerId,createdAt])
 }
