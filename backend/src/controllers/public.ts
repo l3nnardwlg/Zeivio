@@ -25,6 +25,11 @@ export async function getPublicPresentationByCode(req: Request, res: Response): 
       return;
     }
 
+    if (!presentation.isPublished) {
+      res.status(404).json({ error: 'Präsentation ist nicht veröffentlicht.' });
+      return;
+    }
+
     res.json({ presentation });
   } catch (error) {
     console.error('Get public presentation error:', error);
@@ -46,6 +51,16 @@ export async function submitVote(req: Request, res: Response): Promise<void> {
     if (!slide) {
       res.status(404).json({ error: 'Slide not found' });
       return;
+    }
+    const presentation = await prisma.presentation.findUnique({ where: { id: slide.presentationId } });
+    if (!presentation?.isPublished || slide.type !== 'POLL') {
+      res.status(403).json({ error: 'Voting is not available' }); return;
+    }
+    let options: unknown;
+    try { options = JSON.parse(slide.options || '[]'); } catch { options = []; }
+    const index = Number(optionIndex);
+    if (!Array.isArray(options) || !Number.isInteger(index) || index < 0 || index >= options.length) {
+      res.status(400).json({ error: 'Invalid poll option' }); return;
     }
 
     const vote = await prisma.pollVote.create({
