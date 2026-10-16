@@ -10,6 +10,7 @@ import '../../editor.css';
 
 type Presentation = {id:string;title:string;accessCode:string;isPublished:boolean};
 type Status = 'saved'|'saving'|'unsaved'|'error';
+type MediaAsset = {id:string;url:string;name:string;mime:string;bytes:number};
 const TEMPLATES = [
   ['title','Titelfolie'],['blank','Leer'],['split','Zwei Spalten'],['section','Kapitel'],
   ['quote','Zitat'],['image','Bild'],['agenda','Agenda'],['data','Daten'],['poll','Umfrage']
@@ -25,7 +26,8 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
   const [loading,setLoading]=useState(true);
   const [status,setStatus]=useState<Status>('saved');
   const [zoom,setZoom]=useState(100);
-  const [tab,setTab]=useState<'elements'|'templates'>('elements');
+  const [tab,setTab]=useState<'elements'|'templates'|'media'>('elements');
+  const [assets,setAssets]=useState<MediaAsset[]>([]);
   const [dragId,setDragId]=useState<string|null>(null);
   const [uploading,setUploading]=useState(false);
   const fileInput=useRef<HTMLInputElement>(null);
@@ -52,6 +54,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
         ]);
         if(cancelled)return;
         setPresentation(p.presentation);
+        void apiRequest<{assets:MediaAsset[]}>('/media').then(result=>{if(!cancelled)setAssets(result.assets||[]);}).catch(console.error);
         setSlides(s.slides);setActiveId(s.slides[0]?.id||'');
       }catch(e){console.error(e);if(!cancelled)setStatus('error');}
       finally{if(!cancelled)setLoading(false);}
@@ -199,6 +202,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     setUploading(true);
     try{
       const result=await uploadMedia(file);
+      const refreshed=await apiRequest<{assets:MediaAsset[]}>('/media');setAssets(refreshed.assets||[]);
       add('image',{src:result.url,x:22,y:20,width:56,height:60});
     }catch(error){alert(error instanceof Error?error.message:'Upload fehlgeschlagen');}
     finally{setUploading(false);if(fileInput.current)fileInput.current.value='';}
@@ -251,7 +255,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
         <p className="zeHint">Folien zum Sortieren ziehen.</p>
       </aside>
       <aside className="zeLibrary">
-        <div className="zeTabs"><button className={tab==='elements'?'active':''} onClick={()=>setTab('elements')}>Elemente</button><button className={tab==='templates'?'active':''} onClick={()=>setTab('templates')}>Vorlagen</button></div>
+        <div className="zeTabs"><button className={tab==='elements'?'active':''} onClick={()=>setTab('elements')}>Elemente</button><button className={tab==='templates'?'active':''} onClick={()=>setTab('templates')}>Vorlagen</button><button className={tab==='media'?'active':''} onClick={()=>setTab('media')}>Medien</button></div>
         {tab==='elements'?<div className="zeLibraryContent">
           <p className="zeSectionLabel">Inhalt</p>
           <div className="zeTools">
@@ -269,9 +273,19 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
           <div className="zePaletteList">{PALETTES.map(p=><button key={p.name} onClick={()=>change({...scene,background:p.background,foreground:p.foreground,elements:scene.elements.map(e=>e.kind==='text'?{...e,color:p.foreground}:e)})}><span className="zeSwatches"><i style={{background:p.background}}/><i style={{background:p.foreground}}/><i style={{background:p.accent}}/></span>{p.name}</button>)}</div>
           <p className="zeSectionLabel">Interaktiv</p>
           <button className="zeButton zeFill" onClick={()=>void addSlide('poll')}>+ Live-Umfrage</button>
-        </div>:<div className="zeLibraryContent">
+        </div>:tab==='templates'?<div className="zeLibraryContent">
           <p className="zeSectionLabel">Neue Folie aus Vorlage</p>
           {TEMPLATES.map(([key,name])=><button key={key} className="zeTemplate" onClick={()=>void addSlide(key)}><span className="zeTemplateIcon">▣</span>{name}<span>+</span></button>)}
+        </div>:<div className="zeLibraryContent">
+          <p className="zeSectionLabel">Deine Bildbibliothek</p>
+          <button className="zeButton zeFill" onClick={()=>fileInput.current?.click()}>+ Bild hochladen</button>
+          <p className="zeHint">Bilder bleiben gespeichert und können auf mehreren Folien verwendet werden.</p>
+          {assets.length===0?<p className="zeHint">Noch keine Bilder hochgeladen.</p>:<div className="zeMediaGrid">
+            {assets.map(asset=><button key={asset.id} className="zeMediaAsset" onClick={()=>add('image',{src:asset.url,x:22,y:20,width:56,height:60})} title={asset.name}>
+              <img src={(process.env.NEXT_PUBLIC_API_URL||'http://localhost:4000/api').replace(/\/api\/?$/,'')+asset.url} alt={asset.name} loading="lazy"/>
+              <span>{decodeURIComponent(asset.name)}</span>
+            </button>)}
+          </div>}
         </div>}
       </aside>
       <main className="zeCenter">
