@@ -32,6 +32,8 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
   const [uploading,setUploading]=useState(false);
   const fileInput=useRef<HTMLInputElement>(null);
   const pending=useRef(new Map<string,Scene>());
+  const pendingMeta=useRef(new Map<string,Partial<SlideData>>());
+  const metaTimeouts=useRef(new Map<string,ReturnType<typeof setTimeout>>());
   const timeouts=useRef(new Map<string,ReturnType<typeof setTimeout>>());
   const chain=useRef<Promise<void>>(Promise.resolve());
   const undoStacks=useRef(new Map<string,Scene[]>());
@@ -76,7 +78,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     chain.current=chain.current.catch(()=>{}).then(async()=>{
       try{
         await apiRequest(`/slides/${slideId}`,{method:'PUT',body:JSON.stringify({design:JSON.stringify(snapshot)})});
-        if(!pending.current.size&&!timeouts.current.size){dirty.current=false;setStatus('saved');}
+        if(!pending.current.size&&!timeouts.current.size&&!pendingMeta.current.size&&!metaTimeouts.current.size){dirty.current=false;setStatus('saved');}
       }catch(error){
         pending.current.set(slideId,snapshot);dirty.current=true;setStatus('error');console.error('Speichern fehlgeschlagen',error);
       }
@@ -90,8 +92,30 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     const old=timeouts.current.get(slideId);if(old)clearTimeout(old);
     timeouts.current.set(slideId,setTimeout(()=>{void persist(slideId);},650));
   },[persist]);
+  const persistMeta=(slideId:string)=>{
+    const timer=metaTimeouts.current.get(slideId);
+    if(timer)clearTimeout(timer);
+    metaTimeouts.current.delete(slideId);
+    const changes=pendingMeta.current.get(slideId);
+    if(!changes)return chain.current;
+    pendingMeta.current.delete(slideId);
+    setStatus('saving');
+    chain.current=chain.current.catch(()=>{}).then(async()=>{
+      try{
+        await apiRequest(`/slides/${slideId}`,{method:'PUT',body:JSON.stringify(changes)});
+        if(!pending.current.size&&!timeouts.current.size&&!pendingMeta.current.size&&!metaTimeouts.current.size){
+          dirty.current=false;setStatus('saved');
+        }
+      }catch(error){
+        pendingMeta.current.set(slideId,{...changes,...pendingMeta.current.get(slideId)});
+        dirty.current=true;setStatus('error');console.error('Metadaten-Speicherung fehlgeschlagen',error);
+      }
+    });
+    return chain.current;
+  };
   const flush=async()=>{
     for(const key of Array.from(pending.current.keys()))persist(key);
+    for(const key of Array.from(pendingMeta.current.keys()))persistMeta(key);
     await chain.current;
     return !dirty.current;
   };
@@ -190,12 +214,14 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     try{await apiRequest(`/slides/presentation/${id}/reorder`,{method:'PUT',body:JSON.stringify({slideIds:sorted.map(s=>s.id)})});}
     catch(error){setSlides(slides);alert('Sortierung konnte nicht gespeichert werden');}
   };
-  const updateSlideMeta=async(fields:Partial<SlideData>)=>{
+  const updateSlideMeta=(fields:Partial<SlideData>)=>{
     if(!active)return;
-    const id=active.id;
-    setSlides(prev=>prev.map(s=>s.id===id?{...s,...fields}:s));
-    try{await apiRequest(`/slides/${id}`,{method:'PUT',body:JSON.stringify(fields)});}
-    catch{setStatus('error');}
+    const slideId=active.id;
+    setSlides(prev=>prev.map(s=>s.id===slideId?{...s,...fields}:s));
+    pendingMeta.current.set(slideId,{...(pendingMeta.current.get(slideId)||{}),...fields});
+    dirty.current=true;setStatus('unsaved');
+    const timer=metaTimeouts.current.get(slideId);if(timer)clearTimeout(timer);
+    metaTimeouts.current.set(slideId,setTimeout(()=>void persistMeta(slideId),650));
   };
   const upload=async(file:File)=>{
     if(!scene)return;
@@ -203,7 +229,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     try{
       const result=await uploadMedia(file);
       const refreshed=await apiRequest<{assets:MediaAsset[]}>('/media');setAssets(refreshed.assets||[]);
-      add('image',{src:result.url,x:22,y:20,width:56,height:60});
+      if(element?.kind==='image'){changeElement({src:result.url});}else{add('image',{src:result.url,x:22,y:20,width:56,height:60});}
     }catch(error){alert(error instanceof Error?error.message:'Upload fehlgeschlagen');}
     finally{setUploading(false);if(fileInput.current)fileInput.current.value='';}
   };
