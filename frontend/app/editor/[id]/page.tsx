@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/auth-context';
 import { apiRequest, uploadMedia } from '../../../lib/api';
 import SlideSurface from '../../../components/SlideSurface';
 import { Scene, SlideData, SceneElement, ElementKind, PALETTES, makeElement, makeScene, parseScene, validScene, clamp } from '../../../lib/scene';
-import '../editor.css';
+import '../../editor.css';
 
 type Presentation = {id:string;title:string;accessCode:string;isPublished:boolean};
 type Status = 'saved'|'saving'|'unsaved'|'error';
