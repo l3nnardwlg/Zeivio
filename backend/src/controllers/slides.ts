@@ -66,7 +66,7 @@ export async function createSlide(req: AuthenticatedRequest, res: Response): Pro
     }
 
     const presentationId = req.params.presentationId as string;
-    const { type = 'CONTENT', title = 'Neue Folie', subtitle, content, options } = req.body;
+    const { type = 'CONTENT', title = 'Neue Folie', subtitle, content, options, design } = req.body;
 
     const presentation = await prisma.presentation.findUnique({
       where: { id: presentationId },
@@ -96,6 +96,7 @@ export async function createSlide(req: AuthenticatedRequest, res: Response): Pro
         subtitle: subtitle ? subtitle.trim() : null,
         content: content ? content.trim() : null,
         options: defaultOptions,
+        design: typeof design === 'string' ? design : null,
       },
       include: {
         votes: true,
@@ -122,7 +123,7 @@ export async function updateSlide(req: AuthenticatedRequest, res: Response): Pro
     }
 
     const slideId = req.params.id as string;
-    const { title, subtitle, content, type, options, orderIndex } = req.body;
+    const { title, subtitle, content, type, options, orderIndex, design } = req.body;
 
     const slide = await prisma.slide.findUnique({
       where: { id: slideId },
@@ -148,6 +149,7 @@ export async function updateSlide(req: AuthenticatedRequest, res: Response): Pro
         ...(type !== undefined && { type }),
         ...(options !== undefined && { options: typeof options === 'string' ? options : JSON.stringify(options) }),
         ...(orderIndex !== undefined && { orderIndex }),
+        ...(design !== undefined && { design: typeof design === 'string' ? design : JSON.stringify(design) }),
       },
       include: {
         votes: true,
