@@ -11,6 +11,7 @@ interface Slide {
   title: string;
   subtitle?: string;
   content?: string;
+  design?: string;
   options?: string;
 }
 
@@ -143,6 +144,7 @@ export default function AudiencePage({ params }: { params: Promise<{ code: strin
                   <span className="slideTypeTag">{slide.type}</span>
                 </div>
 
+                {slide.design && (() => { try { const d = JSON.parse(slide.design); return d.imageUrl ? <img src={d.imageUrl} alt="Folienbild" style={{ width: '100%', maxHeight: 240, objectFit: 'contain' }} /> : null; } catch { return null; } })()}
                 <h3>{slide.title}</h3>
                 {slide.subtitle && <p className="slideSubtitle">{slide.subtitle}</p>}
 
