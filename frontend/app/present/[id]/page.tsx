@@ -144,6 +144,8 @@ export default function PresentPage({params}:{params:Promise<{id:string}>}) {
         {next?<SlideSurface scene={parseScene(next)} />:<p>Ende der Präsentation</p>}
         <h3>Sprechernotizen</h3>
         <p className="zeNotes">{current?parseScene(current).notes||'Keine Notizen für diese Folie.':'Keine Folie'}</p>
+        <h3>Export</h3>
+        <Link href={`/print/${id}`} target="_blank" className="zeButton zeFill">Alle Folien drucken / PDF ↓</Link>
         <h3>Publikumsmodus</h3>
         <a href={`/p/${presentation.accessCode}`} target="_blank" rel="noopener noreferrer" className="zeButton zeFill">Publikumsansicht öffnen ↗</a>
         <p className="zeHint">Mit ← → oder Leertaste steuern. Die Zuschauer sehen nur die aktive Folie, wenn die Sitzung läuft.</p>
