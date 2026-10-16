@@ -196,13 +196,12 @@ export async function deleteSlide(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    await prisma.slide.delete({ where: { id: slideId } });
-
-    const remainingSlidesCount = Math.max(1, slide.presentation.slides.length - 1);
-    await prisma.presentation.update({
-      where: { id: slide.presentationId },
-      data: { slideCount: remainingSlidesCount },
-    });
+    const remaining = slide.presentation.slides.filter(s=>s.id!==slideId).sort((a,b)=>a.orderIndex-b.orderIndex);
+    await prisma.$transaction([
+      prisma.slide.delete({where:{id:slideId}}),
+      ...remaining.map((s,i)=>prisma.slide.update({where:{id:s.id},data:{orderIndex:i}})),
+      prisma.presentation.update({where:{id:slide.presentationId},data:{slideCount:remaining.length,currentSlideIndex:Math.min(slide.presentation.currentSlideIndex,Math.max(0,remaining.length-1))}})
+    ]);
 
     res.json({ message: 'Slide deleted successfully' });
   } catch (error) {
