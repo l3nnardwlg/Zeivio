@@ -20,6 +20,7 @@ interface Slide {
   title: string;
   subtitle?: string;
   content?: string;
+  design?: string;
   options?: string;
   votes?: PollVote[];
 }
@@ -161,6 +162,7 @@ export default function PresentPage({ params }: { params: Promise<{ id: string }
       <main className="presenterStage">
         {currentSlide && (
           <div className="stageCard">
+            {currentSlide.design && (() => { try { const d = JSON.parse(currentSlide.design); return d.imageUrl ? <img src={d.imageUrl} alt="Folienbild" style={{ maxWidth: '70%', maxHeight: 320, objectFit: 'contain' }} /> : null; } catch { return null; } })()}
             <h1 className="stageTitle">{currentSlide.title}</h1>
             {currentSlide.subtitle && <h2 className="stageSubtitle">{currentSlide.subtitle}</h2>}
 
