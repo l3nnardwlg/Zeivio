@@ -93,6 +93,11 @@ export async function getPresentationById(req: AuthenticatedRequest, res: Respon
       return;
     }
 
+    if (!req.user || presentation.ownerId !== req.user.userId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
     res.json({ presentation });
   } catch (error) {
     console.error('Get presentation details error:', error);
@@ -126,6 +131,34 @@ export async function deletePresentation(req: AuthenticatedRequest, res: Respons
     res.json({ message: 'Presentation deleted successfully' });
   } catch (error) {
     console.error('Delete presentation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updatePresentation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const existing = await prisma.presentation.findUnique({ where: { id } });
+    if (!existing) { res.status(404).json({ error: 'Presentation not found' }); return; }
+    if (!req.user || existing.ownerId !== req.user.userId) { res.status(403).json({ error: 'Forbidden' }); return; }
+    const { title, description, isPublished } = req.body ?? {};
+    if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.length > 160)) {
+      res.status(400).json({ error: 'Title must be 1–160 characters' }); return;
+    }
+    if (description !== undefined && description !== null && (typeof description !== 'string' || description.length > 2000)) {
+      res.status(400).json({ error: 'Description must be at most 2000 characters' }); return;
+    }
+    if (isPublished !== undefined && typeof isPublished !== 'boolean') {
+      res.status(400).json({ error: 'isPublished must be a boolean' }); return;
+    }
+    const presentation = await prisma.presentation.update({ where: { id }, data: {
+      ...(title !== undefined ? { title: title.trim() } : {}),
+      ...(description !== undefined ? { description: description?.trim() || null } : {}),
+      ...(isPublished !== undefined ? { isPublished } : {}),
+    }});
+    res.json({ presentation });
+  } catch (error) {
+    console.error('Update presentation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
