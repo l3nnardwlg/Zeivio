@@ -149,6 +149,15 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
     const e=makeElement(kind,{color:scene.foreground,...extra});
     change({...scene,elements:[...scene.elements,e]});setSelected([e.id]);
   };
+  const groupSelection=()=>{
+    if(!scene||selected.length<2)return;
+    const groupId=crypto.randomUUID();
+    change({...scene,elements:scene.elements.map(e=>selected.includes(e.id)?{...e,groupId}:e)});
+  };
+  const ungroupSelection=()=>{
+    if(!scene||!selected.length)return;
+    change({...scene,elements:scene.elements.map(e=>selected.includes(e.id)?{...e,groupId:undefined}:e)});
+  };
   const remove=()=>{
     if(!scene||!selected.length)return;
     change({...scene,elements:scene.elements.filter(e=>!selected.includes(e.id))});
@@ -330,7 +339,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
           </div>
         </div>
         <div className="zeCanvasFooter">
-          <span>Shift + Klick: Mehrfachauswahl · Pfeiltasten: Bewegen · Ctrl+Z: Undo · Ctrl+C/V: Kopieren</span>
+          <span>Shift + Klick: Auswahl · Alt: Freies Bewegen · Ctrl+Z: Undo · Ctrl+C/V: Kopieren</span>
           <span>{scene.elements.length} Elemente</span>
         </div>
       </main>
@@ -349,6 +358,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
             {element.kind==='text'&&<>
               <label>Text<textarea rows={4} value={element.text||''} onChange={e=>changeElement({text:e.target.value})}/></label>
               <label>Schriftgröße<input type="number" min="1" max="30" step=".5" value={element.fontSize||4} onChange={e=>changeElement({fontSize:clamp(Number(e.target.value),1,30)})}/></label>
+              <label>Schriftfamilie<select value={element.fontFamily||'Inter'} onChange={e=>changeElement({fontFamily:e.target.value})}><option value="Inter">Inter</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option><option value="monospace">Monospace</option></select></label>
               <label>Schriftstärke<select value={element.fontWeight||400} onChange={e=>changeElement({fontWeight:Number(e.target.value)})}><option value="400">Normal</option><option value="600">Halbfett</option><option value="700">Fett</option></select></label>
               <label>Ausrichtung<select value={element.textAlign||'left'} onChange={e=>changeElement({textAlign:e.target.value as SceneElement['textAlign']})}><option value="left">Links</option><option value="center">Zentriert</option><option value="right">Rechts</option></select></label>
             </>}
@@ -360,6 +370,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
             <div className="zeCoordinates">{(['x','y','width','height'] as const).map(k=><label key={k}>{k.toUpperCase()}<input type="number" min="0" max="100" step=".5" value={Math.round(element[k]*10)/10} onChange={e=>changeElement({[k]:clamp(Number(e.target.value),0,100)} as Partial<SceneElement>)}/></label>)}</div>
             <label>Rotation<input type="range" min="-180" max="180" value={element.rotation||0} onChange={e=>changeElement({rotation:Number(e.target.value)})}/><small>{element.rotation||0}°</small></label>
             <label>Deckkraft<input type="range" min="0" max="1" step=".05" value={element.opacity??1} onChange={e=>changeElement({opacity:Number(e.target.value)})}/></label>
+            <div className="zeInline"><button className="zeButton" disabled={selected.length<2} onClick={groupSelection}>Gruppieren</button><button className="zeButton" onClick={ungroupSelection}>Lösen</button></div>
             <div className="zeInline"><button className="zeButton" onClick={()=>moveLayer(1)}>Ebene ↑</button><button className="zeButton" onClick={()=>moveLayer(-1)}>Ebene ↓</button></div>
             <div className="zeInline"><button className="zeButton" onClick={()=>changeElement({locked:!element.locked})}>{element.locked?'Entsperren':'Sperren'}</button><button className="zeButton" onClick={()=>changeElement({hidden:!element.hidden})}>{element.hidden?'Anzeigen':'Ausblenden'}</button></div>
             <button className="zeButton zeDanger" onClick={remove}>Auswahl löschen</button>
