@@ -37,7 +37,9 @@ router.post('/', requireAuth, (req,res,next)=>{
     await mkdir(MEDIA_DIRECTORY,{recursive:true});
     const diskPath=path.join(MEDIA_DIRECTORY,filename);
     await writeFile(diskPath,body,{flag:'wx'});
-    const name=String(req.headers['x-filename']||'Bild').slice(0,150).replace(/[\\\\/<>]/g,'_');
+    let name=String(req.headers['x-filename']||'Bild');
+    try{name=decodeURIComponent(name);}catch{}
+    name=name.slice(0,150).replace(/[\\/<>]/g,'_');
     try{
       const asset=await prisma.mediaAsset.create({data:{ownerId:req.user!.userId,url:`/api/media/${filename}`,name,mime:type,bytes:body.length}});
       res.status(201).json({url:asset.url,asset});
