@@ -22,6 +22,7 @@ interface Presentation {
   id: string;
   title: string;
   accessCode: string;
+  isPublished: boolean;
 }
 
 export default function EditorPage({ params }: { params: Promise<{ id: string }> }) {
@@ -274,7 +275,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
             <span>Zeivio</span>
           </Link>
           <span className="divider">/</span>
-          <span className="presentationTitleText">{presentation.title}</span>
+          <button type="button" className="presentationTitleText" onClick={renamePresentation} title="Präsentation umbenennen">{presentation.title} ✎</button>
           {isSaving && <span className="savingBadge">Speichert...</span>}
           {!isSaving && saveError && <span className="savingBadge saveErrorBadge">Nicht gespeichert</span>}
           {!isSaving && !saveError && <span className="savingBadge savedBadge">Gespeichert</span>}
@@ -288,6 +289,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
         </div>
 
         <div className="topbarRight">
+          <button type="button" className="buttonSecondary" onClick={togglePublication}>{presentation.isPublished ? "Freigabe deaktivieren" : "Veröffentlichen"}</button>
           <Link href={`/present/${presentationId}`} className="buttonPrimary presentNavButton">
             Präsentieren ▶
           </Link>
