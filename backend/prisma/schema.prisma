@@ -42,6 +42,7 @@ model Slide {
   title          String
   subtitle       String?
   content        String?
+  design         String?      // JSON: layout, background, foreground, imageUrl
   options        String?      // JSON string array for poll options e.g. ["Option A", "Option B"]
   votes          PollVote[]
   createdAt      DateTime     @default(now())
