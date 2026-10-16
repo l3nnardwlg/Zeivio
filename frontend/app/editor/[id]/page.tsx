@@ -94,6 +94,28 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
   const activeSlide = slides[activeSlideIndex] || null;
 
+  const renamePresentation = async () => {
+    if (!presentation) return;
+    const title = window.prompt('Neuer Präsentationstitel', presentation.title);
+    if (!title || !title.trim()) return;
+    try {
+      const response = await apiRequest(`/presentations/${presentationId}`, {
+        method: 'PATCH', body: JSON.stringify({ title: title.trim() }),
+      });
+      setPresentation(response.presentation);
+    } catch (error) { window.alert(error instanceof Error ? error.message : 'Umbenennen fehlgeschlagen'); }
+  };
+
+  const togglePublication = async () => {
+    if (!presentation) return;
+    try {
+      const response = await apiRequest(`/presentations/${presentationId}`, {
+        method: 'PATCH', body: JSON.stringify({ isPublished: !presentation.isPublished }),
+      });
+      setPresentation(response.presentation);
+    } catch (error) { window.alert(error instanceof Error ? error.message : 'Statusänderung fehlgeschlagen'); }
+  };
+
   const updateActiveSlide = async (updates: Partial<Slide>) => {
     if (!activeSlide) return;
 
