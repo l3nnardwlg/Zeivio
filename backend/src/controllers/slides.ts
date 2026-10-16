@@ -229,3 +229,26 @@ export async function reorderSlides(req: AuthenticatedRequest, res: Response): P
     res.json({message:'Slides reordered'});
   }catch(error){console.error('Reorder slides error:',error);res.status(500).json({error:'Internal server error'});}
 }
+
+export async function getQuestions(req:AuthenticatedRequest,res:Response):Promise<void>{
+  try{
+    const slide=await prisma.slide.findUnique({where:{id:req.params.id as string},include:{presentation:true}});
+    if(!slide){res.status(404).json({error:'Slide not found'});return;}
+    if(!req.user||slide.presentation.ownerId!==req.user.userId){res.status(403).json({error:'Forbidden'});return;}
+    const questions=await prisma.audienceQuestion.findMany({where:{slideId:slide.id},orderBy:{createdAt:'desc'},take:100});
+    res.json({questions});
+  }catch(error){console.error(error);res.status(500).json({error:'Internal server error'});}
+}
+export async function moderateQuestion(req:AuthenticatedRequest,res:Response):Promise<void>{
+  try{
+    const slideId=req.params.id as string,questionId=req.params.questionId as string;
+    const slide=await prisma.slide.findUnique({where:{id:slideId},include:{presentation:true}});
+    if(!slide){res.status(404).json({error:'Slide not found'});return;}
+    if(!req.user||slide.presentation.ownerId!==req.user.userId){res.status(403).json({error:'Forbidden'});return;}
+    if(typeof req.body?.isApproved!=='boolean'){res.status(400).json({error:'isApproved must be boolean'});return;}
+    const question=await prisma.audienceQuestion.findUnique({where:{id:questionId}});
+    if(!question||question.slideId!==slideId){res.status(404).json({error:'Question not found'});return;}
+    const updated=await prisma.audienceQuestion.update({where:{id:questionId},data:{isApproved:req.body.isApproved}});
+    res.json({question:updated});
+  }catch(error){console.error(error);res.status(500).json({error:'Internal server error'});}
+}
