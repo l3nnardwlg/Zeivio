@@ -1,201 +1,100 @@
 'use client';
-
-import React, { useState, useEffect, use } from 'react';
+import React,{use,useEffect,useState,useRef} from 'react';
 import Link from 'next/link';
-import { apiRequest } from '../../../lib/api';
+import {apiRequest} from '../../../lib/api';
+import SlideSurface from '../../../components/SlideSurface';
+import {SlideData,parseScene} from '../../../lib/scene';
+import '../../editor.css';
 
-interface Slide {
-  id: string;
-  orderIndex: number;
-  type: 'CONTENT' | 'POLL' | 'QA';
-  title: string;
-  subtitle?: string;
-  content?: string;
-  design?: string;
-  options?: string;
+type PublicPresentation={id:string;title:string;accessCode:string;sessionActive:boolean;currentSlideIndex:number;owner:{name:string};slides:SlideData[]};
+type ApprovedQuestion={id:string;text:string;createdAt:string};
+function getParticipant():string{
+  const key='zeivio_participant_v1';
+  let id=localStorage.getItem(key);
+  if(!id){id=crypto.randomUUID();localStorage.setItem(key,id);}
+  return id;
 }
-
-interface Presentation {
-  id: string;
-  title: string;
-  accessCode: string;
-  owner: {
-    name: string;
+export default function AudiencePage({params}:{params:Promise<{code:string}>}){
+  const {code}=use(params);
+  const [presentation,setPresentation]=useState<PublicPresentation|null>(null);
+  const [error,setError]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [submitting,setSubmitting]=useState(false);
+  const [voteMessage,setVoteMessage]=useState('');
+  const [questions,setQuestions]=useState<ApprovedQuestion[]>([]);
+  const [question,setQuestion]=useState('');
+  const [questionMessage,setQuestionMessage]=useState('');
+  const participant=useRef<string>('');
+  useEffect(()=>{participant.current=getParticipant();},[]);
+  useEffect(()=>{
+    let mounted=true;
+    const load=async()=>{
+      try{
+        const res=await apiRequest<{presentation:PublicPresentation}>(`/public/p/${encodeURIComponent(code)}`);
+        if(mounted){setPresentation(res.presentation);setError('');}
+      }catch(e){if(mounted)setError(e instanceof Error?e.message:'Verbindung fehlgeschlagen');}
+      finally{if(mounted)setLoading(false);}
+    };
+    void load();
+    const timer=setInterval(()=>void load(),2500);
+    return()=>{mounted=false;clearInterval(timer);};
+  },[code]);
+  const slide=presentation?.slides[0];
+  useEffect(()=>{
+    if(!slide || slide.type!=='QA')return;
+    let mounted=true;
+    const load=async()=>{try{const r=await apiRequest<{questions:ApprovedQuestion[]}>(`/public/questions/${slide.id}`);if(mounted)setQuestions(r.questions||[]);}catch{}};
+    void load();const timer=setInterval(()=>void load(),3500);
+    return()=>{mounted=false;clearInterval(timer);};
+  },[slide?.id,slide?.type]);
+  const options=(()=>{try{return JSON.parse(slide?.options||'[]') as string[];}catch{return [];}})();
+  const voteKey=slide?`zeivio_voted_${slide.id}`:'';
+  const [voted,setVoted]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    if(slide&&localStorage.getItem(voteKey)!==null){setVoted(prev=>({...prev,[slide.id]:Number(localStorage.getItem(voteKey))}));}
+  },[slide?.id,voteKey]);
+  const vote=async(index:number)=>{
+    if(!slide||submitting||voted[slide.id]!==undefined)return;
+    setSubmitting(true);setVoteMessage('');
+    try{
+      await apiRequest('/public/vote',{method:'POST',body:JSON.stringify({slideId:slide.id,optionIndex:index,participantId:participant.current})});
+      localStorage.setItem(voteKey,String(index));setVoted(prev=>({...prev,[slide.id]:index}));setVoteMessage('Deine Stimme wurde gespeichert.');
+    }catch(e){setVoteMessage(e instanceof Error?e.message:'Abstimmung fehlgeschlagen');}
+    finally{setSubmitting(false);}
   };
-  slides: Slide[];
-}
-
-export default function AudiencePage({ params }: { params: Promise<{ code: string }> }) {
-  const resolvedParams = use(params);
-  const code = resolvedParams.code;
-
-  const [presentation, setPresentation] = useState<Presentation | null>(null);
-  const [error, setError] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [votedSlides, setVotedSlides] = useState<Record<string, number>>({});
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (code) {
-      loadPublicPresentation(code);
-    }
-  }, [code]);
-
-  const loadPublicPresentation = async (accessCode: string) => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const res = await apiRequest(`/public/p/${accessCode}`);
-      setPresentation(res.presentation);
-    } catch (err: any) {
-      setError(err.message || 'Präsentation konnte nicht gefunden werden.');
-    } finally {
-      setIsLoading(false);
-    }
+  const sendQuestion=async()=>{
+    if(!slide||!question.trim()||submitting)return;
+    setSubmitting(true);setQuestionMessage('');
+    try{
+      await apiRequest('/public/questions',{method:'POST',body:JSON.stringify({slideId:slide.id,participantId:participant.current,text:question.trim()})});
+      setQuestion('');setQuestionMessage('Deine Frage wurde zur Moderation eingereicht.');
+    }catch(e){setQuestionMessage(e instanceof Error?e.message:'Frage konnte nicht gesendet werden');}
+    finally{setSubmitting(false);}
   };
-
-  const handleVote = async (slideId: string, optionIndex: number) => {
-    if (votedSlides[slideId] !== undefined || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await apiRequest('/public/vote', {
-        method: 'POST',
-        body: JSON.stringify({ slideId, optionIndex }),
-      });
-
-      setVotedSlides({ ...votedSlides, [slideId]: optionIndex });
-    } catch (err: any) {
-      alert(err.message || 'Fehler beim Abstimmen');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const parsePollOptions = (optionsStr?: string): string[] => {
-    if (!optionsStr) return [];
-    try {
-      return JSON.parse(optionsStr);
-    } catch {
-      return [];
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="audienceLayout">
-        <div className="loadingState">
-          <div className="spinner" />
-          <p>Verbinde mit Präsentation...</p>
+  if(loading)return <div className="zeAudience"><div className="loadingState"><div className="spinner"/><p>Verbinde mit Zeivio …</p></div></div>;
+  if(error&&!presentation)return <div className="zeAudience zeAudienceCenter"><h1>Präsentation nicht verfügbar</h1><p>{error}</p><Link href="/" className="zeButton">Zur Startseite</Link></div>;
+  return <div className="zeAudience">
+    <header className="zeAudienceTop"><Link href="/" className="zeLogo">Z <span>Zeivio</span></Link><span>Raum {presentation?.accessCode||code}</span></header>
+    <main className="zeAudienceMain">
+      <div className="zeAudienceHeading"><h1>{presentation?.title}</h1><p>Präsentiert von {presentation?.owner?.name}</p></div>
+      {!presentation?.sessionActive||!slide?<div className="zeWaiting"><div className="zePulse">●</div><h2>Die Präsentation beginnt gleich.</h2><p>Sobald der Präsentierende startet, erscheint hier automatisch die aktuelle Folie.</p></div>:<>
+        <div className="zeAudienceStage"><SlideSurface scene={parseScene(slide)}/></div>
+        <div className="zeAudienceInteraction">
+          <div className="zeSectionTitle">Folie {presentation.currentSlideIndex+1} · {slide.type==='POLL'?'Live-Umfrage':slide.type==='QA'?'Fragen & Antworten':'Präsentation'}</div>
+          {slide.type==='POLL'&&<div className="zePublicPoll">
+            <h2>{slide.title}</h2>
+            {voted[slide.id]!==undefined?<div className="zeAnswerSuccess">✓ Du hast für „{options[voted[slide.id]]}“ abgestimmt.</div>:<div className="zeVoteGrid">{options.map((o,i)=><button key={i} disabled={submitting} onClick={()=>void vote(i)}><span>{String.fromCharCode(65+i)}</span>{o}</button>)}</div>}
+            {voteMessage&&<p aria-live="polite">{voteMessage}</p>}
+          </div>}
+          {slide.type==='QA'&&<div className="zePublicPoll"><h2>Stelle deine Frage</h2>
+            <textarea maxLength={300} rows={3} placeholder="Was möchtest du fragen?" value={question} onChange={e=>setQuestion(e.target.value)}/>
+            <button className="zeButton zePrimary" disabled={submitting||!question.trim()} onClick={()=>void sendQuestion()}>Frage einreichen</button>
+            {questionMessage&&<p aria-live="polite">{questionMessage}</p>}
+            <h3>Freigegebene Fragen</h3>{questions.map(q=><div className="zePublicQuestion" key={q.id}>{q.text}</div>)}
+          </div>}
         </div>
-      </div>
-    );
-  }
-
-  if (error || !presentation) {
-    return (
-      <div className="audienceLayout">
-        <div className="audienceCard">
-          <div className="audienceHeader">
-            <Link href="/" className="brand">
-              <span className="brandMark">Z</span>
-              <span>Zeivio</span>
-            </Link>
-            <h1>Präsentation nicht gefunden</h1>
-            <p>{error || 'Der eingegebene Code ist ungültig oder abgelaufen.'}</p>
-          </div>
-
-          <div className="authFooter">
-            <Link href="/" className="buttonPrimary buttonBlock">
-              Zurück zur Startseite
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="audienceLayout">
-      <header className="audienceTopNav">
-        <div className="brand">
-          <span className="brandMark">Z</span>
-          <span>Zeivio</span>
-        </div>
-        <div className="roomCodeBadge">Code: {presentation.accessCode}</div>
-      </header>
-
-      <main className="audienceContent">
-        <div className="presentationHeaderBanner">
-          <h2>{presentation.title}</h2>
-          <span className="presenterName">Präsentiert von {presentation.owner?.name}</span>
-        </div>
-
-        <div className="audienceSlidesContainer">
-          {presentation.slides.map((slide, index) => {
-            const options = parsePollOptions(slide.options);
-            const userVotedIndex = votedSlides[slide.id];
-
-            return (
-              <article key={slide.id} className="audienceSlideCard">
-                <div className="slideCardHeader">
-                  <span className="slideIndexTag">Folie {index + 1}</span>
-                  <span className="slideTypeTag">{slide.type}</span>
-                </div>
-
-                {slide.design && (() => { try { const d = JSON.parse(slide.design); return d.imageUrl ? <img src={d.imageUrl} alt="Folienbild" style={{ width: '100%', maxHeight: 240, objectFit: 'contain' }} /> : null; } catch { return null; } })()}
-                <h3>{slide.title}</h3>
-                {slide.subtitle && <p className="slideSubtitle">{slide.subtitle}</p>}
-
-                {slide.type === 'CONTENT' && slide.content && (
-                  <div className="audienceSlideText">{slide.content}</div>
-                )}
-
-                {slide.type === 'POLL' && (
-                  <div className="audiencePollSection">
-                    {userVotedIndex !== undefined ? (
-                      <div className="votedConfirmation">
-                        <span className="checkIcon">✓</span>
-                        <div>
-                          <strong>Danke für deine Stimme!</strong>
-                          <p>Du hast für "{options[userVotedIndex]}" gestimmt.</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="audienceOptionsGrid">
-                        {options.map((opt, optIdx) => (
-                          <button
-                            key={optIdx}
-                            className="audienceOptionButton"
-                            onClick={() => handleVote(slide.id, optIdx)}
-                            disabled={isSubmitting}
-                          >
-                            <span className="optionIndexLetter">
-                              {String.fromCharCode(65 + optIdx)}
-                            </span>
-                            <span className="optionText">{opt}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {slide.type === 'QA' && (
-                  <div className="audienceQaBox">
-                    <p>💬 Fragen können direkt an den Präsentierenden gestellt werden.</p>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </main>
-
-      <footer className="audienceFooter">
-        <span>Verbunden mit <strong>zeiv.io</strong></span>
-      </footer>
-    </div>
-  );
+      </>}
+    </main>
+    <footer className="zeAudienceFooter">Zeivio · Live Audience Experience</footer>
+  </div>;
 }
