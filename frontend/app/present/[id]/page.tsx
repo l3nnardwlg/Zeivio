@@ -1,241 +1,153 @@
 'use client';
-
-import React, { useState, useEffect, use } from 'react';
+import React,{use,useEffect,useState,useCallback} from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../../lib/auth-context';
-import { apiRequest } from '../../../lib/api';
+import {useRouter} from 'next/navigation';
+import {useAuth} from '../../../lib/auth-context';
+import {apiRequest} from '../../../lib/api';
+import SlideSurface from '../../../components/SlideSurface';
+import {SlideData,parseScene} from '../../../lib/scene';
+import '../../editor.css';
 
-interface PollVote {
-  id: string;
-  slideId: string;
-  optionIndex: number;
-}
-
-interface Slide {
-  id: string;
-  presentationId: string;
-  orderIndex: number;
-  type: 'CONTENT' | 'POLL' | 'QA';
-  title: string;
-  subtitle?: string;
-  content?: string;
-  design?: string;
-  options?: string;
-  votes?: PollVote[];
-}
-
-interface Presentation {
-  id: string;
-  title: string;
-  accessCode: string;
-}
-
-export default function PresentPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const presentationId = resolvedParams.id;
-
-  const { token } = useAuth();
-  const router = useRouter();
-
-  const [presentation, setPresentation] = useState<Presentation | null>(null);
-  const [slides, setSlides] = useState<Slide[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  useEffect(() => {
-    loadData();
-
-    // Poll votes every 3 seconds during live presentation
-    const interval = setInterval(() => {
-      refreshVotes();
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [presentationId]);
-
-  const loadData = async () => {
-    try {
-      const presRes = await apiRequest(`/presentations/${presentationId}`);
-      setPresentation(presRes.presentation);
-
-      const slidesRes = await apiRequest(`/slides/presentation/${presentationId}`);
-      setSlides(slidesRes.slides || []);
-    } catch (err) {
-      console.error('Failed to load presentation:', err);
-    } finally {
-      setIsLoading(false);
+interface Presentation {id:string;title:string;accessCode:string;isPublished:boolean;sessionActive:boolean;currentSlideIndex:number;sessionStartedAt?:string|null}
+interface Question {id:string;text:string;isApproved:boolean;createdAt:string}
+export default function PresentPage({params}:{params:Promise<{id:string}>}) {
+  const {id}=use(params);
+  const {token,isLoading:authLoading}=useAuth();
+  const router=useRouter();
+  const [presentation,setPresentation]=useState<Presentation|null>(null);
+  const [slides,setSlides]=useState<SlideData[]>([]);
+  const [index,setIndex]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [questions,setQuestions]=useState<Question[]>([]);
+  const [black,setBlack]=useState(false);
+  const [elapsed,setElapsed]=useState(0);
+  const [error,setError]=useState('');
+  const current=slides[index];
+  const next=slides[index+1];
+  const fetchSlides=useCallback(async()=>{
+    const result=await apiRequest<{slides:SlideData[]}>(`/slides/presentation/${id}`);
+    setSlides(result.slides||[]);
+  },[id]);
+  useEffect(()=>{
+    if(!authLoading&&!token){router.replace('/login');return;}
+    if(!token)return;
+    let active=true;
+    (async()=>{
+      try{
+        const [p,s]=await Promise.all([
+          apiRequest<{presentation:Presentation}>(`/presentations/${id}`),
+          apiRequest<{slides:SlideData[]}>(`/slides/presentation/${id}`)
+        ]);
+        if(!active)return;
+        setPresentation(p.presentation);setSlides(s.slides||[]);
+        setIndex(Math.min(p.presentation.currentSlideIndex,Math.max(0,s.slides.length-1)));
+      }catch(e){if(active)setError(e instanceof Error?e.message:'Laden fehlgeschlagen');}
+      finally{if(active)setLoading(false);}
+    })();
+    return()=>{active=false;};
+  },[id,token,authLoading,router]);
+  useEffect(()=>{
+    if(!presentation)return;
+    const timer=setInterval(()=>{
+      if(presentation.sessionStartedAt)setElapsed(Math.floor((Date.now()-new Date(presentation.sessionStartedAt).getTime())/1000));
+      void fetchSlides().catch(()=>{});
+    },2500);
+    return()=>clearInterval(timer);
+  },[presentation?.sessionStartedAt,fetchSlides]);
+  useEffect(()=>{
+    if(!current||current.type!=='QA')return;
+    let mounted=true;
+    const load=async()=>{try{const r=await apiRequest<{questions:Question[]}>(`/slides/${current.id}/questions`);if(mounted)setQuestions(r.questions);}catch{}};
+    void load();const timer=setInterval(()=>void load(),2500);
+    return()=>{mounted=false;clearInterval(timer);};
+  },[current?.id,current?.type]);
+  const patch=async(data:Partial<Presentation>)=>{
+    try{
+      const r=await apiRequest<{presentation:Presentation}>(`/presentations/${id}`,{method:'PATCH',body:JSON.stringify(data)});
+      setPresentation(r.presentation);
+      setError('');
+      return true;
+    }catch(e){setError(e instanceof Error?e.message:'Speichern fehlgeschlagen');return false;}
+  };
+  const navigate=async(nextIndex:number)=>{
+    if(nextIndex<0||nextIndex>=slides.length||nextIndex===index)return;
+    if(presentation?.sessionActive && !await patch({currentSlideIndex:nextIndex}))return;
+    setIndex(nextIndex);
+  };
+  const toggleSession=async()=>{
+    if(!presentation)return;
+    const goingLive=!presentation.sessionActive;
+    if(await patch({sessionActive:goingLive,isPublished:goingLive?true:presentation.isPublished,currentSlideIndex:index})){
+      if(goingLive)setElapsed(0);
     }
   };
-
-  const refreshVotes = async () => {
-    try {
-      const slidesRes = await apiRequest(`/slides/presentation/${presentationId}`);
-      setSlides(slidesRes.slides || []);
-    } catch (err) {
-      console.error('Failed to refresh votes:', err);
-    }
+  const moderate=async(q:Question)=>{
+    if(!current)return;
+    try{
+      await apiRequest(`/slides/${current.id}/questions/${q.id}`,{method:'PATCH',body:JSON.stringify({isApproved:!q.isApproved})});
+      setQuestions(prev=>prev.map(item=>item.id===q.id?{...item,isApproved:!item.isApproved}:item));
+    }catch{setError('Moderation fehlgeschlagen');}
   };
-
-  const nextSlide = () => {
-    if (currentIndex < slides.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
-
-  const prevSlide = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
-        nextSlide();
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        prevSlide();
-      } else if (e.key === 'Escape') {
-        router.push(`/editor/${presentationId}`);
-      }
+  useEffect(()=>{
+    const handler=(e:KeyboardEvent)=>{
+      const target=e.target as HTMLElement;
+      if(['INPUT','TEXTAREA'].includes(target.tagName))return;
+      if(['ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();void navigate(index+1);}
+      if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();void navigate(index-1);}
+      if(e.key.toLowerCase()==='b')setBlack(x=>!x);
+      if(e.key==='Escape'&&document.fullscreenElement)void document.exitFullscreen();
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, slides.length, presentationId, router]);
-
-  if (isLoading || !presentation) {
-    return (
-      <div className="loadingState" style={{ height: '100vh', background: '#000' }}>
-        <div className="spinner" />
-        <p>Lade Präsentation...</p>
-      </div>
-    );
-  }
-
-  const currentSlide = slides[currentIndex];
-
-  const parsePollOptions = (optionsStr?: string): string[] => {
-    if (!optionsStr) return [];
-    try {
-      return JSON.parse(optionsStr);
-    } catch {
-      return [];
-    }
-  };
-
-  const options = parsePollOptions(currentSlide?.options);
-  const votes = currentSlide?.votes || [];
-  const totalVotes = votes.length;
-
-  const getVoteCountForOption = (optionIndex: number) => {
-    return votes.filter((v) => v.optionIndex === optionIndex).length;
-  };
-
-  const getVotePercentageForOption = (optionIndex: number) => {
-    if (totalVotes === 0) return 0;
-    const count = getVoteCountForOption(optionIndex);
-    return Math.round((count / totalVotes) * 100);
-  };
-
-  return (
-    <div className="presenterLayout">
-      {/* Top Banner */}
-      <div className="presenterHeader">
-        <div className="presenterBrand">
-          <span className="brandMark">Z</span>
-          <span>Zeivio Presenter</span>
+    window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);
+  });
+  const options=(()=>{try{return JSON.parse(current?.options||'[]') as string[];}catch{return [];}})();
+  const count=current?.votes?.length||0;
+  const duration=`${String(Math.floor(elapsed/60)).padStart(2,'0')}:${String(elapsed%60).padStart(2,'0')}`;
+  if(authLoading||loading)return <div className="loadingState"><div className="spinner"/><p>Lade Präsentation …</p></div>;
+  if(!presentation)return <div className="loadingState"><p>{error||'Nicht gefunden'}</p><Link href="/dashboard">Dashboard</Link></div>;
+  return <div className="zePresenter">
+    <header className="zePresentHeader">
+      <strong>▣ Zeivio Presenter</strong><span>{presentation.title}</span>
+      <div className="zeSpacer"/>
+      <span className={presentation.sessionActive?'zeLive':'zeOffline'}>{presentation.sessionActive?'● LIVE':'○ OFFLINE'}</span>
+      <button onClick={()=>void toggleSession()} className="zeButton zePrimary">{presentation.sessionActive?'Live-Sitzung beenden':'▶ Live starten'}</button>
+      <Link className="zeButton" href={`/editor/${id}`}>Editor ✕</Link>
+    </header>
+    {error&&<div className="zePresentError">{error}</div>}
+    <div className="zePresentBody">
+      <div className="zePresentMain">
+        <div className="zePresentAudience">Publikum: <strong>{typeof window!=='undefined'?window.location.origin+'/p/'+presentation.accessCode: presentation.accessCode}</strong></div>
+        <div className="zePresenterStage">
+          {black?<div className="zeBlackout">Bildschirm pausiert – Taste B</div>:current?<SlideSurface scene={parseScene(current)} />:<p>Keine Folie verfügbar</p>}
         </div>
-
-        <div className="joinCallout">
-          <span>Auf Smartphone mitmachen:</span>
-          <strong>zeiv.io/p/{presentation.accessCode}</strong>
-        </div>
-
-        <Link href={`/editor/${presentationId}`} className="exitPresentButton">
-          Editor beenden ✕
-        </Link>
+        {current?.type==='POLL'&&<div className="zePresentPoll">
+          <strong>Live-Umfrage · {count} Stimmen</strong>
+          {options.map((o,i)=>{
+            const votes=current.votes?.filter(v=>v.optionIndex===i).length||0;
+            return <div key={i} className="zePollRow"><span>{o} · {votes}</span><div><i style={{width:`${count?Math.round(votes/count*100):0}%`}}/></div></div>;
+          })}
+        </div>}
+        {current?.type==='QA'&&<div className="zePresentPoll">
+          <strong>Q&A-Moderation ({questions.filter(q=>!q.isApproved).length} offen)</strong>
+          {questions.length===0&&<p>Fragen erscheinen hier, sobald das Publikum sie einreicht.</p>}
+          {questions.map(q=><div className="zeQuestionRow" key={q.id}><span>{q.text}</span><button className="zeButton" onClick={()=>void moderate(q)}>{q.isApproved?'Freigabe entfernen':'Freigeben'}</button></div>)}
+        </div>}
+        <footer className="zePresentControls">
+          <button className="zeButton" onClick={()=>void navigate(index-1)} disabled={index<=0}>← Zurück</button>
+          <span>Folie {index+1} / {slides.length} · {duration}</span>
+          <button className="zeButton" onClick={()=>setBlack(x=>!x)}>{black?'Bild einblenden':'Bild schwarz (B)'}</button>
+          <button className="zeButton" onClick={()=>{const node=document.documentElement;if(!document.fullscreenElement)void node.requestFullscreen();else void document.exitFullscreen();}}>⛶ Vollbild</button>
+          <button className="zeButton zePrimary" onClick={()=>void navigate(index+1)} disabled={index>=slides.length-1}>Weiter →</button>
+        </footer>
       </div>
-
-      {/* Main Slide Stage */}
-      <main className="presenterStage">
-        {currentSlide && (
-          <div className="stageCard">
-            {currentSlide.design && (() => { try { const d = JSON.parse(currentSlide.design); return d.imageUrl ? <img src={d.imageUrl} alt="Folienbild" style={{ maxWidth: '70%', maxHeight: 320, objectFit: 'contain' }} /> : null; } catch { return null; } })()}
-            <h1 className="stageTitle">{currentSlide.title}</h1>
-            {currentSlide.subtitle && <h2 className="stageSubtitle">{currentSlide.subtitle}</h2>}
-
-            {currentSlide.type === 'CONTENT' && (
-              <div className="stageContent">
-                <p>{currentSlide.content}</p>
-              </div>
-            )}
-
-            {currentSlide.type === 'POLL' && (
-              <div className="stagePollBox">
-                <div className="pollHeader">
-                  <span>Stimmen insgesamt: <strong>{totalVotes}</strong></span>
-                </div>
-
-                <div className="pollBarsContainer">
-                  {options.map((opt, i) => {
-                    const count = getVoteCountForOption(i);
-                    const pct = getVotePercentageForOption(i);
-                    return (
-                      <div key={i} className="pollBarRow">
-                        <div className="pollOptionLabelRow">
-                          <span className="pollOptionText">{opt}</span>
-                          <span className="pollOptionStats">
-                            {count} {count === 1 ? 'Stimme' : 'Stimmen'} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="pollTrack">
-                          <div
-                            className="pollFill"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {currentSlide.type === 'QA' && (
-              <div className="stageQaBox">
-                <div className="qaIconBig">💬</div>
-                <h2>Fragen aus dem Publikum</h2>
-                <p>Das Publikum kann Fragen unter <strong>zeiv.io/p/{presentation.accessCode}</strong> einreichen.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Control Footer */}
-      <footer className="presenterFooter">
-        <button
-          className="navArrowButton"
-          onClick={prevSlide}
-          disabled={currentIndex === 0}
-        >
-          ← Vorherige
-        </button>
-
-        <span className="slideCounter">
-          Folie {currentIndex + 1} von {slides.length}
-        </span>
-
-        <button
-          className="navArrowButton"
-          onClick={nextSlide}
-          disabled={currentIndex === slides.length - 1}
-        >
-          Nächste →
-        </button>
-      </footer>
+      <aside className="zePresentSide">
+        <h3>Nächste Folie</h3>
+        {next?<SlideSurface scene={parseScene(next)} />:<p>Ende der Präsentation</p>}
+        <h3>Sprechernotizen</h3>
+        <p className="zeNotes">{current?parseScene(current).notes||'Keine Notizen für diese Folie.':'Keine Folie'}</p>
+        <h3>Publikumsmodus</h3>
+        <a href={`/p/${presentation.accessCode}`} target="_blank" rel="noopener noreferrer" className="zeButton zeFill">Publikumsansicht öffnen ↗</a>
+        <p className="zeHint">Mit ← → oder Leertaste steuern. Die Zuschauer sehen nur die aktive Folie, wenn die Sitzung läuft.</p>
+      </aside>
     </div>
-  );
+  </div>;
 }
