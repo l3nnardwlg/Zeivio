@@ -14,6 +14,7 @@ interface Slide {
   title: string;
   subtitle?: string;
   content?: string;
+  design?: string;
   options?: string; // JSON string e.g. ["Option A", "Option B"]
   votes?: any[];
 }
@@ -94,6 +95,34 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
   };
 
   const activeSlide = slides[activeSlideIndex] || null;
+  const templates = [
+    { name: 'Minimal', background: '#ffffff', foreground: '#151923', layout: 'classic' },
+    { name: 'Midnight', background: '#10182b', foreground: '#f7fafc', layout: 'classic' },
+    { name: 'Ocean', background: '#073b4c', foreground: '#ffffff', layout: 'split' },
+    { name: 'Sunset', background: '#542344', foreground: '#fff5eb', layout: 'center' },
+  ];
+  const design = (() => { try { return JSON.parse(activeSlide?.design || '{}'); } catch { return {}; } })();
+  const setDesign = (change: Record<string, string>) => updateActiveSlide({ design: JSON.stringify({ ...design, ...change }) });
+  const [draggedSlide, setDraggedSlide] = useState<string | null>(null);
+  const reorderSlide = async (targetId: string) => {
+    if (!draggedSlide || draggedSlide === targetId) return;
+    const oldSlides = [...slides];
+    const ordered = [...slides];
+    const from = ordered.findIndex(s => s.id === draggedSlide);
+    const to = ordered.findIndex(s => s.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    setSlides(ordered);
+    setActiveSlideIndex(ordered.findIndex(s => s.id === activeSlide?.id));
+    setDraggedSlide(null);
+    try {
+      await Promise.all(ordered.map((slide, index) => apiRequest(`/slides/${slide.id}`, { method: 'PUT', body: JSON.stringify({ orderIndex: index }) })));
+    } catch {
+      setSlides(oldSlides);
+      setSaveError(true);
+    }
+  };
 
   const renamePresentation = async () => {
     if (!presentation) return;
@@ -188,6 +217,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
           subtitle: activeSlide.subtitle,
           content: activeSlide.content,
           options: activeSlide.options,
+          design: activeSlide.design,
         }),
       });
 
@@ -307,6 +337,11 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
             {slides.map((slide, idx) => (
               <div
                 key={slide.id}
+                draggable
+                onDragStart={() => setDraggedSlide(slide.id)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => { event.preventDefault(); void reorderSlide(slide.id); }}
+                onDragEnd={() => setDraggedSlide(null)}
                 className={`slideThumbItem ${idx === activeSlideIndex ? 'active' : ''}`}
                 onClick={() => setActiveSlideIndex(idx)}
               >
@@ -347,16 +382,17 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
         {/* Center: Live Canvas Preview */}
         <main className="editorCanvasArea">
           {activeSlide && (
-            <div className="canvasSlideBox">
+            <div className="canvasSlideBox" style={{ background: design.background || "#ffffff", color: design.foreground || "#151923" }}>
               <div className="canvasSlideHeader">
                 <span className="canvasTypeBadge">{activeSlide.type}</span>
                 <span className="canvasCodeBadge">zeiv.io/{presentation.accessCode}</span>
               </div>
 
-              <div className="canvasBody">
+              <div className="canvasBody" style={{ textAlign: design.layout === "center" ? "center" : "left", display: design.layout === "split" ? "grid" : "block", gridTemplateColumns: design.layout === "split" ? "1fr 1fr" : undefined, gap: 24 }}>
                 <h1 className="canvasTitle">{activeSlide.title || 'Foliensuchzeile'}</h1>
                 {activeSlide.subtitle && <h3 className="canvasSubtitle">{activeSlide.subtitle}</h3>}
 
+                {design.imageUrl && <img src={design.imageUrl} alt="Folienbild" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 12 }} />}
                 {activeSlide.type === 'CONTENT' && (
                   <div className="canvasContentText">
                     {activeSlide.content || 'Hier erscheint der Folieninhalt...'}
@@ -394,6 +430,16 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
           {activeSlide && (
             <div className="inspectorContent">
               <h2>Folien-Eigenschaften</h2>
+              <div className="formGroup">
+                <label>Design-Bibliothek</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {templates.map(template => <button key={template.name} type="button" onClick={() => setDesign(template)} style={{ background: template.background, color: template.foreground, border: '1px solid #888', borderRadius: 8, padding: 12, cursor: 'pointer' }}>{template.name}</button>)}
+                </div>
+              </div>
+              <div className="formGroup"><label>Layout</label><select className="inspectorSelect" value={design.layout || 'classic'} onChange={e => setDesign({ layout: e.target.value })}><option value="classic">Klassisch</option><option value="center">Zentriert</option><option value="split">Zwei Spalten</option></select></div>
+              <div className="formGroup"><label>Hintergrundfarbe</label><input aria-label="Hintergrundfarbe" type="color" value={design.background || '#ffffff'} onChange={e => setDesign({ background: e.target.value })}/></div>
+              <div className="formGroup"><label>Textfarbe</label><input aria-label="Textfarbe" type="color" value={design.foreground || '#151923'} onChange={e => setDesign({ foreground: e.target.value })}/></div>
+              <div className="formGroup"><label>Bild-URL (HTTPS)</label><input type="url" value={design.imageUrl || ''} placeholder="https://..." onChange={e => setDesign({ imageUrl: e.target.value })}/><button type="button" className="buttonGhost buttonSmall" onClick={() => setDesign({ imageUrl: '' })}>Bild entfernen</button></div>
 
               <div className="formGroup">
                 <label>Folientyp</label>
