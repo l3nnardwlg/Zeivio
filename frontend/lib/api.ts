@@ -37,7 +37,7 @@ export async function uploadMedia(file: File): Promise<{url:string}> {
   if(!token) throw new Error('Bitte erneut anmelden.');
   const response=await fetch(`${API_BASE_URL}/media`,{
     method:'POST',
-    headers:{'Authorization':`Bearer ${token}`,'Content-Type':file.type},
+    headers:{'Authorization':`Bearer ${token}`,'Content-Type':file.type,'X-Filename':encodeURIComponent(file.name)},
     body:file
   });
   const data=await response.json().catch(()=>({}));
