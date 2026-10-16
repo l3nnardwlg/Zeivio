@@ -25,6 +25,9 @@ model Presentation {
   description String?
   slideCount  Int      @default(1)
   isPublished Boolean  @default(false)
+  sessionActive Boolean @default(false)
+  currentSlideIndex Int @default(0)
+  sessionStartedAt DateTime?
   accessCode  String   @unique
   ownerId     String
   owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -45,6 +48,7 @@ model Slide {
   design         String?      // JSON: layout, background, foreground, imageUrl
   options        String?      // JSON string array for poll options e.g. ["Option A", "Option B"]
   votes          PollVote[]
+  questions      AudienceQuestion[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -54,5 +58,18 @@ model PollVote {
   slideId     String
   slide       Slide    @relation(fields: [slideId], references: [id], onDelete: Cascade)
   optionIndex Int
+  participantId String?
+  @@unique([slideId, participantId])
   createdAt   DateTime @default(now())
+}
+
+model AudienceQuestion {
+  id String @id @default(uuid())
+  slideId String
+  slide Slide @relation(fields: [slideId],references:[id],onDelete:Cascade)
+  participantId String
+  text String
+  isApproved Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([slideId, isApproved])
 }
