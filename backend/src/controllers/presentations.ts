@@ -141,7 +141,7 @@ export async function updatePresentation(req: AuthenticatedRequest, res: Respons
     const existing = await prisma.presentation.findUnique({ where: { id } });
     if (!existing) { res.status(404).json({ error: 'Presentation not found' }); return; }
     if (!req.user || existing.ownerId !== req.user.userId) { res.status(403).json({ error: 'Forbidden' }); return; }
-    const { title, description, isPublished } = req.body ?? {};
+    const { title, description, isPublished, sessionActive, currentSlideIndex } = req.body ?? {};
     if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.length > 160)) {
       res.status(400).json({ error: 'Title must be 1–160 characters' }); return;
     }
@@ -151,10 +151,18 @@ export async function updatePresentation(req: AuthenticatedRequest, res: Respons
     if (isPublished !== undefined && typeof isPublished !== 'boolean') {
       res.status(400).json({ error: 'isPublished must be a boolean' }); return;
     }
+    if (sessionActive !== undefined && typeof sessionActive !== 'boolean') {res.status(400).json({error:'sessionActive must be boolean'});return;}
+    if (currentSlideIndex !== undefined && (!Number.isInteger(currentSlideIndex) || currentSlideIndex < 0)) {res.status(400).json({error:'Invalid slide index'});return;}
+    if (currentSlideIndex !== undefined) {
+      const count = await prisma.slide.count({where:{presentationId:id}});
+      if (currentSlideIndex >= count) {res.status(400).json({error:'Slide index out of range'});return;}
+    }
     const presentation = await prisma.presentation.update({ where: { id }, data: {
       ...(title !== undefined ? { title: title.trim() } : {}),
       ...(description !== undefined ? { description: description?.trim() || null } : {}),
       ...(isPublished !== undefined ? { isPublished } : {}),
+      ...(sessionActive !== undefined ? {sessionActive,sessionStartedAt:sessionActive ? new Date() : null} : {}),
+      ...(currentSlideIndex !== undefined ? {currentSlideIndex} : {}),
     }});
     res.json({ presentation });
   } catch (error) {
