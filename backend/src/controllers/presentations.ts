@@ -1,12 +1,13 @@
 import { Response } from 'express';
+import { randomInt } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 function generateAccessCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(randomInt(chars.length));
   }
   return code;
 }
@@ -37,9 +38,9 @@ export async function createPresentation(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const { title, description, slideCount } = req.body;
+    const { title, description } = req.body ?? {};
 
-    if (!title) {
+    if (typeof title !== 'string' || !title.trim() || title.length > 160 || (description !== undefined && (typeof description !== 'string' || description.length > 2000))) {
       res.status(400).json({ error: 'Title is required' });
       return;
     }
@@ -62,7 +63,7 @@ export async function createPresentation(req: AuthenticatedRequest, res: Respons
       data: {
         title: title.trim(),
         description: description ? description.trim() : null,
-        slideCount: slideCount ? parseInt(slideCount, 10) : 1,
+        slideCount: 1,
         accessCode,
         ownerId: req.user.userId,
       },
