@@ -12,7 +12,8 @@ services:
     restart: unless-stopped
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       PORT: 4000
       DATABASE_URL: file:/data/zeivio.db
