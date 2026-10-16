@@ -17,7 +17,7 @@
 ## Docker Compose
 - Set `JWT_SECRET` via the host environment or a private `.env` next to Compose.
 - Run `docker compose up --build -d`.
-- SQLite + uploaded images live in the named `zeivio_data` volume, NOT Git.
+- SQLite (\`DATABASE_URL=file:/data/zeivio.db\`) + uploaded images live in the named `zeivio_data` volume, NOT Git.
 - Default public URL assumes localhost. For deployment behind a TLS reverse proxy, set `PUBLIC_API_URL` to the public backend `https://.../api` and `PUBLIC_FRONTEND_ORIGIN` to the exact frontend origin before building.
 - Images are publicly readable by unguessable filename; don't upload sensitive images.
 - Never remove the named data volume without taking backups.
@@ -38,3 +38,5 @@
 - Participant ID in localStorage prevents accidental repeat votes in the same browser, but is not a strong human identity; abuse controls and global rate limiting require additional hardening.
 - `getPublicPresentationByCode` intentionally exposes only the active published slide during live sessions.
 - Current SQLite repository snapshot is tracked historically; production must use external persistent storage and database backups.
+
+**Migration warning:** For an existing database, back it up and review Prisma migration warnings. Do not use \`--accept-data-loss\` casually. CI runs against its own empty \`ci-test.db\`.
