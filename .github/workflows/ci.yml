@@ -19,9 +19,11 @@ jobs:
         run: npm ci
       - name: Validate Prisma schema
         run: npx prisma validate --schema backend/prisma/schema.prisma
+      - name: Apply Prisma schema to CI database
+        run: npx prisma db push --skip-generate --schema backend/prisma/schema.prisma
       - name: Build backend
         run: npm run build --workspace backend
-      - name: Test API scene validation
+      - name: Test API and integration flows
         run: node --test backend/test/*.test.mjs
       - name: Build frontend
         run: npm run build --workspace frontend
