@@ -6,6 +6,7 @@ RUN npm install
 COPY prisma ./prisma
 COPY tsconfig.json ./
 COPY src ./src
+ENV DATABASE_URL=file:/data/zeivio.db
 RUN npm run build
 RUN mkdir -p /data/uploads
 ENV PORT=4000
