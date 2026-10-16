@@ -290,6 +290,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
         <p className="zeHint">Folien zum Sortieren ziehen.</p>
       </aside>
       <aside className="zeLibrary">
+        <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e=>{if(e.target.files?.[0])void upload(e.target.files[0]);}}/>
         <div className="zeTabs"><button className={tab==='elements'?'active':''} onClick={()=>setTab('elements')}>Elemente</button><button className={tab==='templates'?'active':''} onClick={()=>setTab('templates')}>Vorlagen</button><button className={tab==='media'?'active':''} onClick={()=>setTab('media')}>Medien</button></div>
         {tab==='elements'?<div className="zeLibraryContent">
           <p className="zeSectionLabel">Inhalt</p>
@@ -303,7 +304,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
             <button onClick={()=>add('icon',{icon:'★'})}>★ <small>Icon</small></button>
             <button onClick={()=>add('chart')}>▥ <small>Diagramm</small></button>
           </div>
-          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e=>{if(e.target.files?.[0])void upload(e.target.files[0]);}}/>
+          
           <p className="zeSectionLabel">Foliendesign</p>
           <div className="zePaletteList">{PALETTES.map(p=><button key={p.name} onClick={()=>change({...scene,background:p.background,foreground:p.foreground,elements:scene.elements.map(e=>e.kind==='text'?{...e,color:p.foreground}:e)})}><span className="zeSwatches"><i style={{background:p.background}}/><i style={{background:p.foreground}}/><i style={{background:p.accent}}/></span>{p.name}</button>)}</div>
           <p className="zeSectionLabel">Interaktiv</p>
