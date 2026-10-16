@@ -319,7 +319,7 @@ export default function EditorPage({params}:{params:Promise<{id:string}>}) {
           {assets.length===0?<p className="zeHint">Noch keine Bilder hochgeladen.</p>:<div className="zeMediaGrid">
             {assets.map(asset=><button key={asset.id} className="zeMediaAsset" onClick={()=>add('image',{src:asset.url,x:22,y:20,width:56,height:60})} title={asset.name}>
               <img src={(process.env.NEXT_PUBLIC_API_URL||'http://localhost:4000/api').replace(/\/api\/?$/,'')+asset.url} alt={asset.name} loading="lazy"/>
-              <span>{decodeURIComponent(asset.name)}</span>
+              <span>{asset.name}</span>
             </button>)}
           </div>}
         </div>}
