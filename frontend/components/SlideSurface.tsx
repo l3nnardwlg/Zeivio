@@ -18,7 +18,8 @@ export default function SlideSurface({scene,editable=false,selected=[],onSelect,
   const start = (event: React.PointerEvent<HTMLDivElement>, el:SceneElement, mode:'move'|'resize') => {
     if (!editable || el.locked) return;
     event.preventDefault(); event.stopPropagation();
-    const ids = event.shiftKey ? (selected.includes(el.id) ? selected.filter(id=>id!==el.id) : [...selected,el.id]) : selected.includes(el.id) ? selected : [el.id];
+    const groupIds=el.groupId ? scene.elements.filter(e=>e.groupId===el.groupId).map(e=>e.id) : [el.id];
+    const ids = event.shiftKey ? Array.from(new Set([...selected,...groupIds])) : selected.includes(el.id) ? selected : groupIds;
     onSelect?.(ids);
     if (!ids.includes(el.id)) return;
     const rect = surface.current?.getBoundingClientRect();
@@ -30,7 +31,9 @@ export default function SlideSurface({scene,editable=false,selected=[],onSelect,
   const move = (event: React.PointerEvent<HTMLDivElement>) => {
     const g = gesture.current;
     if (!g || !onChange) return;
-    const dx = (event.clientX-g.px)/g.width*100, dy = (event.clientY-g.py)/g.height*100;
+    const rawDx = (event.clientX-g.px)/g.width*100, rawDy = (event.clientY-g.py)/g.height*100;
+    const snap=(value:number)=>event.altKey?value:Math.round(value*2)/2;
+    const dx=snap(rawDx),dy=snap(rawDy);
     const movingIds = selected.includes(g.id) ? selected : [g.id];
     onChange({...scene,elements:g.elements.map(element=>{
       if (!(g.mode === 'resize' ? element.id === g.id : movingIds.includes(element.id))) return element;
@@ -45,7 +48,7 @@ export default function SlideSurface({scene,editable=false,selected=[],onSelect,
   };
   const render = (e:SceneElement) => {
     if (e.hidden) return null;
-    const textStyle: React.CSSProperties = {width:'100%',height:'100%',margin:0,whiteSpace:'pre-wrap',overflow:'hidden',overflowWrap:'anywhere',fontSize:`${e.fontSize || 4}cqw`,color:e.color || scene.foreground,fontWeight:e.fontWeight || 400,textAlign:e.textAlign || 'left',lineHeight:1.18};
+    const textStyle: React.CSSProperties = {width:'100%',height:'100%',margin:0,whiteSpace:'pre-wrap',overflow:'hidden',overflowWrap:'anywhere',fontSize:`${e.fontSize || 4}cqw`,color:e.color || scene.foreground,fontWeight:e.fontWeight || 400,textAlign:e.textAlign || 'left',fontFamily:e.fontFamily || 'Inter, Arial, sans-serif',lineHeight:1.18};
     if (e.kind === 'text') return <div style={{...textStyle,display:'flex',alignItems:'center'}}><span style={{width:'100%'}}>{e.text}</span></div>;
     if (e.kind === 'image') {const src=mediaSource(e.src || '');return src ? <img src={src} alt={e.text || 'Bild'} draggable={false} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:e.borderRadius || 0}} /> : <div className="zeImagePlaceholder">Bild hinzufügen</div>;}
     if (e.kind === 'shape') return <div style={{width:'100%',height:'100%',background:e.shape==='line'?'transparent':(e.fill||'#7657FF'),borderRadius:e.shape==='ellipse'?'50%':(e.borderRadius??0),borderBottom:e.shape==='line'?`4px solid ${e.fill || '#7657FF'}`:undefined}}/>;
@@ -53,7 +56,7 @@ export default function SlideSurface({scene,editable=false,selected=[],onSelect,
     if (e.kind === 'chart') return <div style={{display:'flex',alignItems:'flex-end',gap:'4%',width:'100%',height:'100%',borderBottom:`2px solid ${scene.foreground}44`}}>{(e.data||[40,75,55,90]).slice(0,12).map((n,i)=><div key={i} style={{flex:1,height:`${clamp(Number(n)||0,0,100)}%`,background:e.fill||'#7657FF',borderRadius:'4px 4px 0 0'}} title={String(n)}/>)}</div>;
     return null;
   };
-  return <div ref={surface} className={`zeSlideSurface ${className||''}`} style={{background:scene.background,color:scene.foreground}} onPointerDown={event=>{if(event.target===surface.current)onSelect?.([]);}}>
+  return <div ref={surface} className={`zeSlideSurface ${editable?'zeEditing':''} ${className||''}`} style={{background:scene.background,color:scene.foreground}} onPointerDown={event=>{if(event.target===surface.current)onSelect?.([]);}}>
     {scene.elements.map((e,index)=><div key={e.id} role={editable?'button':undefined} tabIndex={editable?0:undefined}
       aria-label={editable?`${e.kind} Element ${index+1}`:undefined}
       className={`zeSceneElement ${editable?'zeEditable':''} ${selected.includes(e.id)?'zeSelected':''}`}
