@@ -35,6 +35,13 @@ test('Create → Edit → Present → Vote → Moderate Q&A', {timeout:45000},as
     const pres=create.data.presentation;
     assert.ok(pres.accessCode.length>=6);
     const scene={version:1,background:'#FFFFFF',foreground:'#172033',elements:[{id:'example',kind:'text',x:5,y:5,width:75,height:22,text:'A headline'}]};
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9hK4bQAAAABJRU5ErkJggg==','base64');
+    const mediaResponse=await fetch(api+'/media',{method:'POST',headers:{authorization:headers.authorization,'content-type':'image/png','x-filename':'image.png'},body:png});
+    const mediaJson=await mediaResponse.json();
+    assert.equal(mediaResponse.status,201,JSON.stringify(mediaJson));
+    const gallery=await request('/media',{headers});
+    assert.equal(gallery.status,200,JSON.stringify(gallery.data));
+    assert.ok(gallery.data.assets.some(asset=>asset.url===mediaJson.url));
     const poll=await request(`/slides/presentation/${pres.id}`,{method:'POST',headers,body:JSON.stringify({title:'Poll',type:'POLL',design:JSON.stringify(scene),options:JSON.stringify(['Yes','No'])})});
     assert.equal(poll.status,201,JSON.stringify(poll.data));
     const pollId=poll.data.slide.id;
