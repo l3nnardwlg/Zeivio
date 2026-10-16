@@ -5,6 +5,7 @@ export interface SceneElement {
   kind: ElementKind;
   x: number; y: number; width: number; height: number;
   text?: string; src?: string; shape?: ShapeKind; icon?: string;
+  groupId?: string; fontFamily?: string;
   fill?: string; color?: string; fontSize?: number; fontWeight?: number;
   textAlign?: 'left' | 'center' | 'right'; borderRadius?: number;
   opacity?: number; rotation?: number; locked?: boolean; hidden?: boolean;
