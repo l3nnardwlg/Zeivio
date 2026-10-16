@@ -14,7 +14,7 @@ test('Create → Edit → Present → Vote → Moderate Q&A', {timeout:45000},as
   let output='';
   server.stderr.on('data',chunk=>{output+=chunk.toString();});
   const request=async(endpoint,options={})=>{
-    const result=await fetch(api+endpoint,{headers:{'content-type':'application/json',...options.headers},...options});
+    const result=await fetch(api+endpoint,{...options,headers:{'content-type':'application/json',...options.headers}});
     const json=await result.json().catch(()=>({}));
     return {status:result.status,data:json};
   };
