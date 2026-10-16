@@ -69,10 +69,11 @@ export function parseScene(slide: Pick<SlideData,'design'|'title'|'subtitle'|'co
     };
   }
   const scene = makeScene('title', slide.title || 'Folie');
+  scene.elements.forEach((element,index)=>{element.id=`legacy-${index}`;});
   scene.background = hex(raw.background,'#FFFFFF'); scene.foreground = hex(raw.foreground,'#172033');
   scene.elements.forEach(element => { element.color = scene.foreground; });
   if (slide.subtitle || slide.content) scene.elements[1].text = [slide.subtitle,slide.content].filter(Boolean).join('\\n');
-  if (typeof raw.imageUrl === 'string' && raw.imageUrl) scene.elements.push(makeElement('image',{src:raw.imageUrl,x:55,y:28,width:38,height:56}));
+  if (typeof raw.imageUrl === 'string' && raw.imageUrl) scene.elements.push(makeElement('image',{id:'legacy-image',src:raw.imageUrl,x:55,y:28,width:38,height:56}));
   return scene;
 }
 export function mediaSource(source: string): string {
