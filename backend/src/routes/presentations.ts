@@ -4,6 +4,7 @@ import {
   createPresentation,
   getPresentationById,
   deletePresentation,
+  updatePresentation,
 } from '../controllers/presentations';
 import { requireAuth } from '../middleware/auth';
 
@@ -14,6 +15,7 @@ router.use(requireAuth);
 router.get('/', getPresentations);
 router.post('/', createPresentation);
 router.get('/:id', getPresentationById);
+router.patch('/:id', updatePresentation);
 router.delete('/:id', deletePresentation);
 
 export default router;

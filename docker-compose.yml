@@ -1,7 +1,29 @@
 services:
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000/api}
     ports:
       - "3000:3000"
+    depends_on:
+      - backend
     restart: unless-stopped
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      PORT: 4000
+      DATABASE_URL: file:/data/zeivio.db
+      MEDIA_DIR: /data/uploads
+      JWT_SECRET: ${JWT_SECRET:?Set a strong random JWT_SECRET}
+      CORS_ORIGIN: ${PUBLIC_FRONTEND_ORIGIN:-http://localhost:3000}
+    volumes:
+      - zeivio_data:/data
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+volumes:
+  zeivio_data:

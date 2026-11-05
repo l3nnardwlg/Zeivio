@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth-context';
 import { apiRequest } from '../../lib/api';
+import { makeScene } from '../../lib/scene';
 
 interface Presentation {
   id: string;
@@ -38,6 +39,8 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newTemplate,setNewTemplate]=useState('title');
+  const [searchTerm,setSearchTerm]=useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -55,12 +58,12 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setIsFetching(true);
     try {
-      const [presRes, usersRes] = await Promise.all([
-        apiRequest('/presentations'),
-        apiRequest('/auth/users'),
-      ]);
+      const presRes = await apiRequest('/presentations');
       setPresentations(presRes.presentations || []);
-      setUsersList(usersRes.users || []);
+      if(user?.role==='ADMIN'){
+        const usersRes=await apiRequest('/auth/users');
+        setUsersList(usersRes.users||[]);
+      }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -84,6 +87,9 @@ export default function DashboardPage() {
         }),
       });
 
+      await apiRequest(`/slides/presentation/${data.presentation.id}`, {
+        method:'POST',body:JSON.stringify({title:newTitle,type:newTemplate==='poll'?'POLL':'CONTENT',design:JSON.stringify(makeScene(newTemplate,newTitle)),options:newTemplate==='poll'?JSON.stringify(['Option A','Option B']):undefined})
+      });
       setPresentations([data.presentation, ...presentations]);
       setShowModal(false);
       setNewTitle('');
@@ -95,6 +101,25 @@ export default function DashboardPage() {
     }
   };
 
+  const duplicatePresentation=async(source:Presentation)=>{
+    try{
+      const existing=await apiRequest<{slides:{title:string;type:string;subtitle?:string;content?:string;design?:string;options?:string}[]}>(`/slides/presentation/${source.id}`);
+      const created=await apiRequest<{presentation:Presentation}>('/presentations',{method:'POST',body:JSON.stringify({title:source.title+' (Kopie)',description:source.description||''})});
+      for(const slide of existing.slides){
+        await apiRequest(`/slides/presentation/${created.presentation.id}`,{method:'POST',body:JSON.stringify({title:slide.title,type:slide.type,subtitle:slide.subtitle,content:slide.content,design:slide.design,options:slide.options})});
+      }
+      setPresentations(prev=>[created.presentation,...prev]);
+    }catch(error){alert(error instanceof Error?error.message:'Duplizieren fehlgeschlagen');}
+  };
+  const exportPresentation=async(source:Presentation)=>{
+    try{
+      const result=await apiRequest<{slides:unknown[]}>(`/slides/presentation/${source.id}`);
+      const file=new Blob([JSON.stringify({format:'zeivio',version:1,presentation:{title:source.title,description:source.description},slides:result.slides},null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(file);
+      const link=document.createElement('a');link.href=url;link.download='zeivio-'+source.id+'.json';link.click();
+      URL.revokeObjectURL(url);
+    }catch(error){alert('Export fehlgeschlagen');}
+  };
   const handleDeletePresentation = async (id: string) => {
     if (!confirm('Möchtest du diese Präsentation wirklich löschen?')) return;
 
@@ -135,12 +160,12 @@ export default function DashboardPage() {
           >
             Meine Präsentationen ({presentations.length})
           </button>
-          <button
+          {user?.role==='ADMIN' && <button
             className={`tabButton ${activeTab === 'users' ? 'active' : ''}`}
             onClick={() => setActiveTab('users')}
           >
             Alle Benutzer ({usersList.length})
-          </button>
+          </button>}
         </nav>
 
         <div className="headerRight">
@@ -175,6 +200,7 @@ export default function DashboardPage() {
           <section className="presentationsSection">
             <div className="sectionHeader">
               <h2>Deine Präsentationen</h2>
+              <input aria-label="Präsentationen suchen" placeholder="Präsentationen suchen …" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} style={{background:'#202733',color:'white',border:'1px solid #3c4252',borderRadius:8,padding:10}} />
               <span className="countBadge">{presentations.length} insgesamt</span>
             </div>
 
@@ -194,7 +220,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="gridGrid">
-                {presentations.map((pres) => (
+                {presentations.filter(p=>p.title.toLowerCase().includes(searchTerm.toLowerCase())||(p.description||'').toLowerCase().includes(searchTerm.toLowerCase())).map((pres) => (
                   <article key={pres.id} className="presentationCard">
                     <div className="cardTop">
                       <span className="codeBadge">Code: {pres.accessCode}</span>
@@ -228,6 +254,8 @@ export default function DashboardPage() {
                         >
                           Präsentieren 
                         </Link>
+                        <button className="buttonGhost buttonSmall" onClick={()=>void duplicatePresentation(pres)}>Duplizieren</button>
+                        <button className="buttonGhost buttonSmall" onClick={()=>void exportPresentation(pres)}>JSON ↓</button>
                         <button
                           className="buttonGhost buttonSmall textDanger"
                           onClick={() => handleDeletePresentation(pres.id)}
@@ -329,6 +357,7 @@ export default function DashboardPage() {
                 />
               </div>
 
+              <div className="formGroup"><label htmlFor="template">Startvorlage</label><select id="template" value={newTemplate} onChange={e=>setNewTemplate(e.target.value)} style={{padding:12,borderRadius:8,background:'#171b25',color:'white'}}><option value="title">Titelfolie</option><option value="blank">Leere Folie</option><option value="split">Zwei Spalten</option><option value="section">Kapitel</option><option value="agenda">Agenda</option><option value="data">Daten</option><option value="poll">Live-Umfrage</option></select></div>
               <div className="modalFooter">
                 <button
                   type="button"

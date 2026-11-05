@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url);
+const { validateScene }=require('../dist/lib/scene-validation.js');
+const base={version:1,background:'#FFFFFF',foreground:'#172033',elements:[{id:'text-a',kind:'text',x:5,y:5,width:70,height:20,text:'Hello'}]};
+test('accepts a valid versioned scene',()=>assert.equal(validateScene(JSON.stringify(base)),null));
+test('accepts legacy settings',()=>assert.equal(validateScene(JSON.stringify({background:'#ffffff',layout:'center'})),null));
+test('rejects invalid JSON',()=>assert.match(validateScene('{')||'',/valid JSON/));
+test('rejects excessive elements',()=>assert.match(validateScene(JSON.stringify({...base,elements:Array.from({length:151},(_,i)=>({...base.elements[0],id:String(i)}))}))||'',/Too many/));
+test('rejects malformed geometry',()=>assert.match(validateScene(JSON.stringify({...base,elements:[{...base.elements[0],x:-1}]}))||'',/geometry/));
+test('rejects script URLs for media',()=>assert.match(validateScene(JSON.stringify({...base,elements:[{...base.elements[0],src:'javascript:alert(1)'}]}))||'',/image URL/));

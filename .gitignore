@@ -141,3 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Zeivio Studio local state (already-tracked files require explicit untracking)
+backend/uploads/
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/prisma/*.db-wal
+backend/prisma/*.db-shm
+backend/prisma/ci-test.db
+backend/.env
